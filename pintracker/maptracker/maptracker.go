@@ -10,6 +10,7 @@ import (
 
 	"github.com/ipfs/ipfs-cluster/api"
 	"github.com/ipfs/ipfs-cluster/optracker"
+	"github.com/ipfs/ipfs-cluster/pintracker/ptutil"
 
 	rpc "github.com/hsanjuan/go-libp2p-gorpc"
 	cid "github.com/ipfs/go-cid"
@@ -280,21 +281,7 @@ func (mpt *MapPinTracker) unpin(c api.Pin) error {
 // possibly triggering Pin operations on the IPFS daemon.
 func (mpt *MapPinTracker) Track(c api.Pin) error {
 	logger.Debugf("tracking %s", c.Cid)
-
-	if opc, ok := mpt.optracker.get(c.Cid); ok {
-		switch {
-		case opc.op == operationPin:
-			return nil // already ongoing
-		case opc.op == operationUnpin && opc.phase == phaseQueued:
-			mpt.optracker.finish(c.Cid)
-			return nil // cancelled while in queue, all done
-		case opc.op == operationUnpin && opc.phase == phaseInProgress:
-			mpt.optracker.finish(c.Cid)
-			// cancelled while unpinning: continue and trigger pin
-		}
-	}
-
-	if mpt.isRemote(c) {
+	if ptutil.IsRemotePin(c, mpt.peerID) {
 		if mpt.get(c.Cid).Status == api.TrackerStatusPinned {
 			mpt.optracker.TrackNewOperation(
 				mpt.ctx,
@@ -474,7 +461,7 @@ func (mpt *MapPinTracker) syncStatus(c *cid.Cid, ips api.IPFSPinStatus) api.PinI
 		case api.TrackerStatusUnpinned:
 			mpt.setError(c, errPinned)
 		case api.TrackerStatusUnpinError: // nothing, keep error as it was
-		default: //remote
+		default: // remote
 		}
 	} else {
 		switch p.Status {

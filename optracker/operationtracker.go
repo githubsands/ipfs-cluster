@@ -6,6 +6,8 @@ import (
 
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log"
+
+	"github.com/ipfs/ipfs-cluster/api"
 )
 
 var logger = logging.Logger("operationtracker")
@@ -149,4 +151,28 @@ func (opt *OperationTracker) Get(c *cid.Cid) (Operation, bool) {
 	opc, ok := opt.operations[c.String()]
 	opt.mu.RUnlock()
 	return opc, ok
+}
+
+func (op Operation) OperationPhase2TrackerStatus() api.TrackerStatus {
+	switch op.Op {
+	case OperationPin:
+		switch op.Phase {
+		case PhaseQueued:
+			return api.TrackerStatusPinQueued
+		case PhaseInProgress:
+			return api.TrackerStatusPinning
+		case PhaseError:
+			return api.TrackerStatusPinError
+		}
+	case OperationUnpin:
+		switch op.Phase {
+		case PhaseQueued:
+			return api.TrackerStatusUnpinQueued
+		case PhaseInProgress:
+			return api.TrackerStatusUnpinning
+		case PhaseError:
+			return api.TrackerStatusUnpinError
+		}
+	}
+	return api.TrackerStatusBug
 }

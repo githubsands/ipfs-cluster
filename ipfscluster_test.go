@@ -157,13 +157,13 @@ func makeMonitor(t *testing.T, h host.Host, bmonCfg *basic.Config, psmonCfg *pub
 	return mon
 }
 
-func makePinTracker(t *testing.T, pid peer.ID, mptCfg *maptracker.Config, sptCfg *statelesstracker.Config) PinTracker {
+func makePinTracker(t *testing.T, pid peer.ID, mptCfg *maptracker.Config, sptCfg *stateless.Config) PinTracker {
 	var ptrkr PinTracker
 	switch ptracker {
 	case "map":
 		ptrkr = maptracker.NewMapPinTracker(mptCfg, pid)
 	case "stateless":
-		ptrkr = statelesstracker.NewStatelessPinTracker(sptCfg, pid)
+		ptrkr = stateless.New(sptCfg, pid)
 	default:
 		panic("bad pintracker")
 	}

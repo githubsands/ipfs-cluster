@@ -10,7 +10,7 @@ import (
 
 	"github.com/ipfs/ipfs-cluster/api"
 	"github.com/ipfs/ipfs-cluster/optracker"
-	"github.com/ipfs/ipfs-cluster/pintracker/ptutil"
+	"github.com/ipfs/ipfs-cluster/pintracker/util"
 
 	rpc "github.com/hsanjuan/go-libp2p-gorpc"
 	cid "github.com/ipfs/go-cid"
@@ -281,19 +281,6 @@ func (mpt *MapPinTracker) unpin(c api.Pin) error {
 // possibly triggering Pin operations on the IPFS daemon.
 func (mpt *MapPinTracker) Track(c api.Pin) error {
 	logger.Debugf("tracking %s", c.Cid)
-	if ptutil.IsRemotePin(c, mpt.peerID) {
-		if mpt.get(c.Cid).Status == api.TrackerStatusPinned {
-			mpt.optracker.TrackNewOperation(
-				mpt.ctx,
-				c.Cid,
-				optracker.OperationUnpin,
-			)
-			mpt.unpin(c)
-		}
-		mpt.set(c.Cid, api.TrackerStatusRemote)
-		return nil
-	}
-
 	if opc, ok := mpt.optracker.Get(c.Cid); ok {
 		if opc.Op == optracker.OperationUnpin {
 			switch opc.Phase {
@@ -306,6 +293,19 @@ func (mpt *MapPinTracker) Track(c api.Pin) error {
 				// so a pin operation needs to be run on it (same as Recover)
 			}
 		}
+	}
+
+	if util.IsRemotePin(c, mpt.peerID) {
+		if mpt.get(c.Cid).Status == api.TrackerStatusPinned {
+			mpt.optracker.TrackNewOperation(
+				mpt.ctx,
+				c.Cid,
+				optracker.OperationUnpin,
+			)
+			mpt.unpin(c)
+		}
+		mpt.set(c.Cid, api.TrackerStatusRemote)
+		return nil
 	}
 
 	mpt.optracker.TrackNewOperation(mpt.ctx, c.Cid, optracker.OperationPin)

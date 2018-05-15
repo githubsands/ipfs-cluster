@@ -82,7 +82,7 @@ var testingDiskInfCfg = []byte(`{
     "metric_type": "freespace"
 }`)
 
-func testingConfigs() (*Config, *rest.Config, *ipfshttp.Config, *raft.Config, *maptracker.Config, *statelesstracker.Config, *basic.Config, *pubsubmon.Config, *disk.Config) {
+func testingConfigs() (*Config, *rest.Config, *ipfshttp.Config, *raft.Config, *maptracker.Config, *stateless.Config, *basic.Config, *pubsubmon.Config, *disk.Config) {
 	clusterCfg, apiCfg, ipfsCfg, consensusCfg, maptrackerCfg, statelesstrackerCfg, basicmonCfg, pubsubmonCfg, diskInfCfg := testingEmptyConfigs()
 	clusterCfg.LoadJSON(testingClusterCfg)
 	apiCfg.LoadJSON(testingAPICfg)
@@ -97,13 +97,13 @@ func testingConfigs() (*Config, *rest.Config, *ipfshttp.Config, *raft.Config, *m
 	return clusterCfg, apiCfg, ipfsCfg, consensusCfg, maptrackerCfg, statelesstrackerCfg, basicmonCfg, pubsubmonCfg, diskInfCfg
 }
 
-func testingEmptyConfigs() (*Config, *rest.Config, *ipfshttp.Config, *raft.Config, *maptracker.Config, *statelesstracker.Config, *basic.Config, *pubsubmon.Config, *disk.Config) {
+func testingEmptyConfigs() (*Config, *rest.Config, *ipfshttp.Config, *raft.Config, *maptracker.Config, *stateless.Config, *basic.Config, *pubsubmon.Config, *disk.Config) {
 	clusterCfg := &Config{}
 	apiCfg := &rest.Config{}
 	ipfshttpCfg := &ipfshttp.Config{}
 	consensusCfg := &raft.Config{}
 	maptrackerCfg := &maptracker.Config{}
-	statelesstrackerCfg := &statelesstracker.Config{}
+	statelesstrackerCfg := &stateless.Config{}
 	basicmonCfg := &basic.Config{}
 	pubsubmonCfg := &pubsubmon.Config{}
 	diskInfCfg := &disk.Config{}

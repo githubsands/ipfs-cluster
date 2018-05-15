@@ -1,4 +1,4 @@
-package statelesstracker
+package stateless
 
 import (
 	"context"
@@ -59,18 +59,18 @@ func (mock *mockService) IPFSUnpin(ctx context.Context, in api.PinSerial, out *s
 	return nil
 }
 
-func testSlowStatelessPinTracker(t *testing.T) *StatelessPinTracker {
+func testSlowStatelessPinTracker(t *testing.T) *Tracker {
 	cfg := &Config{}
 	cfg.Default()
-	mpt := NewStatelessPinTracker(cfg, test.TestPeerID1)
+	mpt := New(cfg, test.TestPeerID1)
 	mpt.SetClient(mockRPCClient(t))
 	return mpt
 }
 
-func testStatelessPinTracker(t *testing.T) *StatelessPinTracker {
+func testStatelessPinTracker(t *testing.T) *Tracker {
 	cfg := &Config{}
 	cfg.Default()
-	spt := NewStatelessPinTracker(cfg, test.TestPeerID1)
+	spt := New(cfg, test.TestPeerID1)
 	spt.SetClient(test.NewMockRPCClient(t))
 	return spt
 }
@@ -156,7 +156,7 @@ func TestStatelessPinTracker_StatusAll(t *testing.T) {
 		name string
 		want []api.PinInfo
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -177,7 +177,7 @@ func TestStatelessPinTracker_Status(t *testing.T) {
 		args args
 		want api.PinInfo
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -195,7 +195,7 @@ func TestStatelessPinTracker_SyncAll(t *testing.T) {
 		want    []api.PinInfo
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestStatelessPinTracker_Sync(t *testing.T) {
 		want    api.PinInfo
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -245,7 +245,7 @@ func TestStatelessPinTracker_RecoverAll(t *testing.T) {
 		want    []api.PinInfo
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -272,7 +272,7 @@ func TestStatelessPinTracker_Recover(t *testing.T) {
 		want    api.PinInfo
 		wantErr bool
 	}{
-	// TODO: Add test cases.
+		// TODO: Add test cases.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

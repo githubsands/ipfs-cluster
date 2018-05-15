@@ -158,10 +158,10 @@ func (opt *OperationTracker) Get(c *cid.Cid) (Operation, bool) {
 func (opt *OperationTracker) GetAll() []Operation {
 	var ops []Operation
 	opt.mu.RLock()
+	defer opt.mu.RUnlock()
 	for _, op := range opt.operations {
 		ops = append(ops, op)
 	}
-	opt.mu.RUnlock()
 	return ops
 }
 
@@ -172,6 +172,7 @@ func (opt *OperationTracker) GetAll() []Operation {
 func (opt *OperationTracker) Filter(filter interface{}) []Operation {
 	var ops []Operation
 	opt.mu.RLock()
+	defer opt.mu.RUnlock()
 	for _, op := range opt.operations {
 		switch filter.(type) {
 		case OperationType:
@@ -185,7 +186,6 @@ func (opt *OperationTracker) Filter(filter interface{}) []Operation {
 		default:
 		}
 	}
-	opt.mu.RUnlock()
 	return ops
 }
 

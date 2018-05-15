@@ -1,4 +1,4 @@
-package statelesstracker
+package stateless
 
 import (
 	"encoding/json"
@@ -7,7 +7,7 @@ import (
 	"github.com/ipfs/ipfs-cluster/config"
 )
 
-const configKey = "statelesstracker"
+const configKey = "stateless"
 
 // Default values for this Config.
 const (

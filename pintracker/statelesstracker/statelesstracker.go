@@ -2,6 +2,7 @@ package statelesstracker
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/ipfs/ipfs-cluster/api"
@@ -19,6 +20,8 @@ var logger = logging.Logger("pintracker")
 // StatelessPinTracker uses the optracker.OperationTracker to manage
 // transitioning shared ipfs-cluster state (Pins) to the local IPFS node.
 type StatelessPinTracker struct {
+	config *Config
+
 	optracker *optracker.OperationTracker
 
 	peerID peer.ID
@@ -29,22 +32,65 @@ type StatelessPinTracker struct {
 	rpcClient *rpc.Client
 	rpcReady  chan struct{}
 
+	pinCh   chan api.Pin
+	unpinCh chan api.Pin
+
 	shutdownMu sync.Mutex
 	shutdown   bool
 	wg         sync.WaitGroup
 }
 
 // NewStatelessPinTracker creates a new StatelessPinTracker.
-func NewStatelessPinTracker(pid peer.ID) *StatelessPinTracker {
+func NewStatelessPinTracker(cfg *Config, pid peer.ID) *StatelessPinTracker {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	spt := &StatelessPinTracker{
-		peerID:   pid,
-		ctx:      ctx,
-		cancel:   cancel,
-		rpcReady: make(chan struct{}, 1),
+		config:    cfg,
+		peerID:    pid,
+		ctx:       ctx,
+		cancel:    cancel,
+		optracker: optracker.NewOperationTracker(ctx),
+		rpcReady:  make(chan struct{}, 1),
+		pinCh:     make(chan api.Pin, cfg.MaxPinQueueSize),
+		unpinCh:   make(chan api.Pin, cfg.MaxPinQueueSize),
 	}
+
+	for i := 0; i < spt.config.ConcurrentPins; i++ {
+		go spt.pinWorker()
+	}
+	go spt.unpinWorker()
+
 	return spt
+}
+
+// reads the queue and makes pins to the IPFS daemon one by one
+func (spt *StatelessPinTracker) pinWorker() {
+	for {
+		select {
+		case p := <-spt.pinCh:
+			if opc, ok := spt.optracker.Get(p.Cid); ok && opc.Op == optracker.OperationPin {
+				spt.optracker.UpdateOperationPhase(p.Cid, optracker.PhaseInProgress)
+				spt.pin(p)
+			}
+		case <-spt.ctx.Done():
+			return
+		}
+	}
+}
+
+// reads the queue and makes unpin requests to the IPFS daemon
+func (spt *StatelessPinTracker) unpinWorker() {
+	for {
+		select {
+		case p := <-spt.unpinCh:
+			if opc, ok := spt.optracker.Get(p.Cid); ok && opc.Op == optracker.OperationUnpin {
+				spt.optracker.UpdateOperationPhase(p.Cid, optracker.PhaseInProgress)
+				spt.unpin(p)
+			}
+		case <-spt.ctx.Done():
+			return
+		}
+	}
 }
 
 // SetClient makes the StatelessPinTracker ready to perform RPC requests to
@@ -89,26 +135,84 @@ func (spt *StatelessPinTracker) Track(c api.Pin) error {
 		return nil
 	}
 
-	//TODO(ajl): implement track
+	if opc, ok := spt.optracker.Get(c.Cid); ok {
+		if opc.Op == optracker.OperationUnpin {
+			switch opc.Phase {
+			case optracker.PhaseQueued:
+				spt.optracker.Finish(c.Cid)
+				return nil
+			case optracker.PhaseInProgress:
+				spt.optracker.Finish(c.Cid)
+				// NOTE: this may leave the api.PinInfo in an error state
+				// so a pin operation needs to be run on it (same as Recover)
+			}
+		}
+	}
+
+	spt.optracker.TrackNewOperation(spt.ctx, c.Cid, optracker.OperationPin)
+
+	select {
+	case spt.pinCh <- c:
+	default:
+		err := errors.New("pin queue is full")
+		spt.optracker.Finish(c.Cid)
+		logger.Error(err.Error())
+		return err
+	}
 	return nil
 }
 
 // Untrack tells the StatelessPinTracker to stop managing a Cid.
 // If the Cid is pinned locally, it will be unpinned.
 func (spt *StatelessPinTracker) Untrack(c *cid.Cid) error {
-	panic("not implemented")
+	logger.Debugf("untracking %s", c)
+	if opc, ok := spt.optracker.Get(c); ok {
+		if opc.Op == optracker.OperationPin {
+			spt.optracker.Finish(c) // cancel it
+
+			switch opc.Phase {
+			case optracker.PhaseQueued:
+				return nil
+			case optracker.PhaseInProgress:
+				// continues below to run a full unpin
+			}
+		}
+	}
+
+	spt.optracker.TrackNewOperation(spt.ctx, c, optracker.OperationUnpin)
+
+	select {
+	case spt.unpinCh <- api.PinCid(c):
+	default:
+		err := errors.New("unpin queue is full")
+		spt.optracker.Finish(c)
+		logger.Error(err.Error())
+		return err
+	}
+	return nil
 }
 
 // StatusAll returns information for all Cids pinned to the local IPFS node.
 func (spt *StatelessPinTracker) StatusAll() []api.PinInfo {
-	//NOTE(ajl): might need to extend optracker to provide GetAll function
-
 	// get statuses from ipfs node first
+	localpis, _ := spt.ipfsStatusAll()
 	// put them into a map
+	var allStatuses map[string]api.PinInfo
+	for _, pi := range localpis {
+		allStatuses[pi.Cid.String()] = pi
+	}
 	// get all inflight operations from optracker
+	infops := spt.optracker.GetAll()
 	// put them into the map, deduplicating any already 'pinned' items with
 	// their inflight operation
-	pis, _ := spt.SyncAll()
+	for _, infop := range infops {
+		allStatuses[infop.Cid.String()] = infop.ToPinInfo(spt.peerID)
+	}
+	// convert deduped map back to array
+	var pis []api.PinInfo
+	for _, pi := range allStatuses {
+		pis = append(pis, pi)
+	}
 	return pis
 }
 
@@ -117,15 +221,11 @@ func (spt *StatelessPinTracker) Status(c *cid.Cid) api.PinInfo {
 	// check if c has an inflight operation in optracker
 	if op, ok := spt.optracker.Get(c); ok {
 		// if it does return the status of the operation
-		pi := api.PinInfo{
-			Cid:    c,
-			Peer:   spt.peerID,
-			Status: op.OperationPhase2TrackerStatus(),
-		}
-		return pi
+		return op.ToPinInfo(spt.peerID)
 	}
 	// else attempt to get status from ipfs node
-	pi, _ := spt.Sync(c)
+	//TODO(ajl): log error
+	pi, _ := spt.ipfsStatus(c)
 	return pi
 }
 
@@ -138,33 +238,8 @@ func (spt *StatelessPinTracker) Status(c *cid.Cid) api.PinInfo {
 // with Recover().
 // An error is returned if we are unable to contact the IPFS daemon.
 func (spt *StatelessPinTracker) SyncAll() ([]api.PinInfo, error) {
-	var ipsMap map[string]api.IPFSPinStatus
-	err := spt.rpcClient.Call(
-		"",
-		"Cluster",
-		"IPFSPinLs",
-		"recursive",
-		&ipsMap,
-	)
-	if err != nil {
-		logger.Error(err)
-		return nil, err
-	}
-	var pins []api.PinInfo
-	for cidstr, ips := range ipsMap {
-		c, err := cid.Decode(cidstr)
-		if err != nil {
-			logger.Error(err)
-			continue
-		}
-		p := api.PinInfo{
-			Cid:    c,
-			Peer:   spt.peerID,
-			Status: api.IPFSPinStatus2TrackerStatus(ips),
-		}
-		pins = append(pins, p)
-	}
-	return pins, nil
+	// no-op in stateless tracker implementation
+	return spt.StatusAll(), nil
 }
 
 // Sync verifies that the status of a Cid in shared state, matches that of
@@ -176,24 +251,8 @@ func (spt *StatelessPinTracker) SyncAll() ([]api.PinInfo, error) {
 // An error is returned if we are unable to contact
 // the IPFS daemon.
 func (spt *StatelessPinTracker) Sync(c *cid.Cid) (api.PinInfo, error) {
-	var ips api.IPFSPinStatus
-	err := spt.rpcClient.Call(
-		"",
-		"Cluster",
-		"IPFSPinLsCid",
-		api.PinCid(c).ToSerial(),
-		&ips,
-	)
-	if err != nil {
-		return api.PinInfo{}, err
-	}
-	pi := api.PinInfo{
-		Cid:    c,
-		Peer:   spt.peerID,
-		Status: api.IPFSPinStatus2TrackerStatus(ips),
-		//TODO(ajl): figure out a way to preserve time value, represents when the cid was pinned
-	}
-	return pi, nil
+	// no-op in stateless tracker implementation
+	return spt.Status(c), nil
 }
 
 // RecoverAll attempts to recover all items tracked by this peer.
@@ -267,4 +326,55 @@ func (spt *StatelessPinTracker) unpin(c api.Pin) error {
 
 func (spt *StatelessPinTracker) syncStatus(c *cid.Cid, ips api.IPFSPinStatus) api.PinInfo {
 	return api.PinInfo{}
+}
+
+func (spt *StatelessPinTracker) ipfsStatus(c *cid.Cid) (api.PinInfo, error) {
+	var ips api.IPFSPinStatus
+	err := spt.rpcClient.Call(
+		"",
+		"Cluster",
+		"IPFSPinLsCid",
+		api.PinCid(c).ToSerial(),
+		&ips,
+	)
+	if err != nil {
+		return api.PinInfo{}, err
+	}
+	pi := api.PinInfo{
+		Cid:    c,
+		Peer:   spt.peerID,
+		Status: ips.ToTrackerStatus(),
+		//TODO(ajl): figure out a way to preserve time value, represents when the cid was pinned
+	}
+	return pi, nil
+}
+
+func (spt *StatelessPinTracker) ipfsStatusAll() ([]api.PinInfo, error) {
+	var ipsMap map[string]api.IPFSPinStatus
+	err := spt.rpcClient.Call(
+		"",
+		"Cluster",
+		"IPFSPinLs",
+		"recursive",
+		&ipsMap,
+	)
+	if err != nil {
+		logger.Error(err)
+		return nil, err
+	}
+	var pins []api.PinInfo
+	for cidstr, ips := range ipsMap {
+		c, err := cid.Decode(cidstr)
+		if err != nil {
+			logger.Error(err)
+			continue
+		}
+		p := api.PinInfo{
+			Cid:    c,
+			Peer:   spt.peerID,
+			Status: ips.ToTrackerStatus(),
+		}
+		pins = append(pins, p)
+	}
+	return pins, nil
 }

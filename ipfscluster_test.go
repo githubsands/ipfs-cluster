@@ -21,6 +21,7 @@ import (
 	"github.com/ipfs/ipfs-cluster/monitor/basic"
 	"github.com/ipfs/ipfs-cluster/monitor/pubsubmon"
 	"github.com/ipfs/ipfs-cluster/pintracker/maptracker"
+	"github.com/ipfs/ipfs-cluster/pintracker/statelesstracker"
 	"github.com/ipfs/ipfs-cluster/state"
 	"github.com/ipfs/ipfs-cluster/state/mapstate"
 	"github.com/ipfs/ipfs-cluster/test"
@@ -43,6 +44,7 @@ var (
 	logLevel = "CRITICAL"
 
 	pmonitor = "pubsub"
+	ptracker = "stateless"
 
 	// When testing with fixed ports...
 	// clusterPort   = 10000
@@ -102,7 +104,7 @@ func createComponents(t *testing.T, i int, clusterSecret []byte, staging bool) (
 	checkErr(t, err)
 	peername := fmt.Sprintf("peer_%d", i)
 
-	clusterCfg, apiCfg, ipfshttpCfg, consensusCfg, trackerCfg, bmonCfg, psmonCfg, diskInfCfg := testingConfigs()
+	clusterCfg, apiCfg, ipfshttpCfg, consensusCfg, maptrackerCfg, statelesstrackerCfg, bmonCfg, psmonCfg, diskInfCfg := testingConfigs()
 
 	clusterCfg.ID = pid
 	clusterCfg.Peername = peername
@@ -127,7 +129,7 @@ func createComponents(t *testing.T, i int, clusterSecret []byte, staging bool) (
 	ipfs, err := ipfshttp.NewConnector(ipfshttpCfg)
 	checkErr(t, err)
 	state := mapstate.NewMapState()
-	tracker := maptracker.NewMapPinTracker(trackerCfg, clusterCfg.ID)
+	tracker := makePinTracker(t, clusterCfg.ID, maptrackerCfg, statelesstrackerCfg)
 
 	mon := makeMonitor(t, host, bmonCfg, psmonCfg)
 
@@ -153,6 +155,19 @@ func makeMonitor(t *testing.T, h host.Host, bmonCfg *basic.Config, psmonCfg *pub
 	}
 	checkErr(t, err)
 	return mon
+}
+
+func makePinTracker(t *testing.T, pid peer.ID, mptCfg *maptracker.Config, sptCfg *statelesstracker.Config) PinTracker {
+	var ptrkr PinTracker
+	switch ptracker {
+	case "map":
+		ptrkr = maptracker.NewMapPinTracker(mptCfg, pid)
+	case "stateless":
+		ptrkr = statelesstracker.NewStatelessPinTracker(sptCfg, pid)
+	default:
+		panic("bad pintracker")
+	}
+	return ptrkr
 }
 
 func createCluster(t *testing.T, host host.Host, clusterCfg *Config, raftCons *raft.Consensus, api API, ipfs IPFSConnector, state state.State, tracker PinTracker, mon PeerMonitor, alloc PinAllocator, inf Informer) *Cluster {

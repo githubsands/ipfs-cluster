@@ -197,7 +197,7 @@ func (spt *StatelessPinTracker) StatusAll() []api.PinInfo {
 	// get statuses from ipfs node first
 	localpis, _ := spt.ipfsStatusAll()
 	// put them into a map
-	var allStatuses map[string]api.PinInfo
+	allStatuses := make(map[string]api.PinInfo)
 	for _, pi := range localpis {
 		allStatuses[pi.Cid.String()] = pi
 	}
@@ -257,7 +257,7 @@ func (spt *StatelessPinTracker) Sync(c *cid.Cid) (api.PinInfo, error) {
 
 // RecoverAll attempts to recover all items tracked by this peer.
 func (spt *StatelessPinTracker) RecoverAll() ([]api.PinInfo, error) {
-	panic("not implemented")
+	return nil, nil
 }
 
 // Recover will re-track or re-untrack a Cid in error state,
@@ -265,7 +265,7 @@ func (spt *StatelessPinTracker) RecoverAll() ([]api.PinInfo, error) {
 // only when it is done. The pinning/unpinning operation happens
 // synchronously, jumping the queues.
 func (spt *StatelessPinTracker) Recover(c *cid.Cid) (api.PinInfo, error) {
-	panic("not implemented")
+	return api.PinInfo{}, nil
 }
 
 func (spt *StatelessPinTracker) pin(c api.Pin) error {

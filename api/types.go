@@ -122,6 +122,12 @@ func (ips IPFSPinStatus) IsPinned() bool {
 	return ips == IPFSPinStatusDirect || ips == IPFSPinStatusRecursive
 }
 
+// ToTrackerStatus converts the IPFSPinStatus value to the
+// appropriate TrackerStatus value.
+func (ips IPFSPinStatus) ToTrackerStatus() TrackerStatus {
+	return ipfsPinStatus2TrackerStatusMap[ips]
+}
+
 var ipfsPinStatus2TrackerStatusMap = map[IPFSPinStatus]TrackerStatus{
 	IPFSPinStatusDirect:    TrackerStatusPinned,
 	IPFSPinStatusRecursive: TrackerStatusPinned,
@@ -129,12 +135,6 @@ var ipfsPinStatus2TrackerStatusMap = map[IPFSPinStatus]TrackerStatus{
 	IPFSPinStatusUnpinned:  TrackerStatusUnpinned,
 	IPFSPinStatusBug:       TrackerStatusBug,
 	IPFSPinStatusError:     TrackerStatusClusterError, //TODO(ajl): check suitability
-}
-
-// IPFSPinStatus2TrackerStatus converts an IPFSPinStatus value to the
-// appropriate TrackerStatus value.
-func IPFSPinStatus2TrackerStatus(ips IPFSPinStatus) TrackerStatus {
-	return ipfsPinStatus2TrackerStatusMap[ips]
 }
 
 // GlobalPinInfo contains cluster-wide status information about a tracked Cid,

@@ -4,10 +4,11 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ipfs/go-cid"
-	logging "github.com/ipfs/go-log"
-
 	"github.com/ipfs/ipfs-cluster/api"
+
+	cid "github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log"
+	peer "github.com/libp2p/go-libp2p-peer"
 )
 
 var logger = logging.Logger("operationtracker")
@@ -45,7 +46,7 @@ const (
 // particular Cid. It provides the type and phase of operation
 // and a way to mark the operation finished (also used to cancel).
 type Operation struct {
-	cid    *cid.Cid
+	Cid    *cid.Cid
 	Op     OperationType
 	Phase  Phase
 	Ctx    context.Context
@@ -56,7 +57,7 @@ type Operation struct {
 func NewOperation(ctx context.Context, c *cid.Cid, op OperationType) Operation {
 	ctx, cancel := context.WithCancel(ctx)
 	return Operation{
-		cid:    c,
+		Cid:    c,
 		Op:     op,
 		Phase:  PhaseQueued,
 		Ctx:    ctx,
@@ -140,7 +141,7 @@ func (opt *OperationTracker) Finish(c *cid.Cid) {
 // Set sets the operation in the OperationTrackers map.
 func (opt *OperationTracker) Set(oc Operation) {
 	opt.mu.Lock()
-	opt.operations[oc.cid.String()] = oc
+	opt.operations[oc.Cid.String()] = oc
 	opt.mu.Unlock()
 }
 
@@ -153,7 +154,49 @@ func (opt *OperationTracker) Get(c *cid.Cid) (Operation, bool) {
 	return opc, ok
 }
 
-func (op Operation) OperationPhase2TrackerStatus() api.TrackerStatus {
+// GetAll gets all inflight operations.
+func (opt *OperationTracker) GetAll() []Operation {
+	var ops []Operation
+	opt.mu.RLock()
+	for _, op := range opt.operations {
+		ops = append(ops, op)
+	}
+	opt.mu.RUnlock()
+	return ops
+}
+
+// Filter returns a slice that only contains operations
+// with the matching filter. Note, only supports
+// filters of type OperationType or Phase, any other type
+// will result in a nil slice being returned.
+func (opt *OperationTracker) Filter(filter interface{}) []Operation {
+	var ops []Operation
+	opt.mu.RLock()
+	for _, op := range opt.operations {
+		switch filter.(type) {
+		case OperationType:
+			if op.Op == filter {
+				ops = append(ops, op)
+			}
+		case Phase:
+			if op.Phase == filter {
+				ops = append(ops, op)
+			}
+		default:
+		}
+	}
+	opt.mu.RUnlock()
+	return ops
+}
+
+// ToPinInfo converts an operation to an api.PinInfo.
+func (op Operation) ToPinInfo(pid peer.ID) api.PinInfo {
+	return api.PinInfo{Cid: op.Cid, Peer: pid, Status: op.ToTrackerStatus()}
+}
+
+// ToTrackerStatus converts an operation and it's phase to
+// the most approriate api.TrackerStatus.
+func (op Operation) ToTrackerStatus() api.TrackerStatus {
 	switch op.Op {
 	case OperationPin:
 		switch op.Phase {
